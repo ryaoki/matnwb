@@ -9,7 +9,7 @@ function subTable = getRow(DynamicTable, ind, varargin)
 % `colnames` or "columns" keyword argument if one exists.
 
 validateattributes(DynamicTable, {'types.hdmf_common.DynamicTable'}, {'scalar'});
-validateattributes(ind, {'numeric'}, {'positive', 'vector'});
+%validateattributes(ind, {'numeric'}, {'positive', 'vector'});
 
 p = inputParser;
 addParameter(p, 'columns', DynamicTable.colnames, @(x)iscellstr(x));
