@@ -74,14 +74,17 @@ end
 
 matInd = unique(matInd);
 matStartInd = matInd - 1;
+%matStartInd = matInd; % bug fixed @210608 by RA
 startInd = ones(size(matInd));
 if isa(VectorIndex.data, 'types.untyped.DataStub')...
         || isa(VectorIndex.data, 'types.untyped.DataPipe')
     stopInd = VectorIndex.data.load(matInd);
-    startInd(matStartInd > 0) = VectorIndex.data.load(matStartInd(matStartInd > 0));
+%    startInd(matStartInd > 0) = VectorIndex.data.load(matStartInd(matStartInd > 0));
+    startInd(matStartInd > 0) = VectorIndex.data.load(matStartInd(matStartInd > 0))+1; % bug fixed @210608 by RA
 else
     stopInd = VectorIndex.data(matInd);
-    startInd(matStartInd > 0) = VectorIndex.data(matStartInd(matStartInd > 0));
+    startInd(matStartInd > 0) = VectorIndex.data(matStartInd(matStartInd > 0))+1; % bug fixed @210608 by RA
+%    startInd(matStartInd > 0) = VectorIndex.data(matStartInd(matStartInd > 0));
 end
 indMap = containers.Map('KeyType', 'uint64', 'ValueType', 'any');
 for i = 1:length(startInd)
