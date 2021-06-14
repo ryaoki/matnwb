@@ -1,7 +1,6 @@
 function checkUnset(obj, argin)
 props = properties(obj);
-%anonNames = {};  
-anonNames = {'description'}; % changed @ 210607 by RA 
+anonNames = {};
 for i = 1:length(props)
     p = obj.(props{i});
     if isa(p, 'types.untyped.Anon')
