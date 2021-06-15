@@ -39,7 +39,11 @@ stub = nwb2.acquisition.get('data').data;
 
 %%
 % test subset/missing dimensions
-testCase.verifyEqual(stub(2:4, 2:4, 2:4), data(2:4, 2:4, 2:4));
+stubData = stub(2:4, 2:4, 2:4);
+testCase.verifyEqual(stubData, data(2:4, 2:4, 2:4));
+% test legacy load style
+testCase.verifyEqual(stubData, stub.load([2, 2, 2], [1, 1, 1], [4, 4, 4]));
+testCase.verifyEqual(stubData, stub.load([2, 2, 2], [4, 4, 4]));
 
 % test Inf
 testCase.verifyEqual(stub(2:end, 2:end, 2:end, :), data(2:end, 2:end, 2:end, :));
@@ -66,4 +70,31 @@ testCase.verifyEqual(stub([1 1 1 1]), data([1 1 1 1]));
 
 % test out of order indices
 testCase.verifyEqual(stub([5 4 3 2 2]), data([5 4 3 2 2]));
+end
+
+function testObjectCopy(testCase)
+unitTestLocation = fullfile(misc.getMatnwbDir(), '+tests', '+unit');
+generateExtension(fullfile(unitTestLocation, 'regionReferenceSchema', 'rrs.namespace.yaml'));
+generateExtension(fullfile(unitTestLocation, 'compoundSchema', 'cs.namespace.yaml'));
+rehash();
+nwb = NwbFile(...
+    'identifier', 'DATASTUB',...
+    'session_description', 'test datastub object copy',...
+    'session_start_time', datetime());
+rc = types.rrs.RefContainer('data', rand(100, 100));
+rcPath = '/acquisition/rc';
+rcDataPath = [rcPath '/data'];
+rcRef = types.cs.CompoundRefData('data', table(...
+    rand(2, 1),...
+    rand(2, 1),...
+    [types.untyped.ObjectView(rcPath); types.untyped.ObjectView(rcPath)],...
+    [types.untyped.RegionView(rcDataPath, 1:2, 99:100); types.untyped.RegionView(rcDataPath, 5:6, 88:89)],...
+    'VariableNames', {'a', 'b', 'objref', 'regref'}));
+
+nwb.acquisition.set('rc', rc);
+nwb.analysis.set('rcRef', rcRef);
+nwbExport(nwb, 'original.nwb');
+nwbNew = nwbRead('original.nwb');
+tests.util.verifyContainerEqual(testCase, nwbNew, nwb);
+nwbExport(nwbNew, 'new.nwb');
 end
