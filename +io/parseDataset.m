@@ -31,7 +31,8 @@ elseif ~strcmp(dataspace.Type, 'simple')
     if iscellstr(data) && 1 == length(data)
         data = data{1};
     elseif ischar(data)
-        if datetime(version('-date')) < datetime('25-Feb-2020','Locale', 'en_US')
+%        if datetime(version('-date')) < datetime('25-Feb-2020','Locale', 'en_US')
+        if datetime(version('-date'),'Locale', 'en_US') < datetime('25-Feb-2020','Locale', 'en_US')
             % MATLAB 2020a fixed string support for HDF5, making reading strings
             % "consistent"
             data = data .';
