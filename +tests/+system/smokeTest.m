@@ -9,7 +9,8 @@ end
 
 function setup(testCase)
 testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
-generateCore();
+generateCore('savedir', '.');
+rehash();
 end
 
 %TODO rewrite namespace instantiation check
@@ -27,7 +28,7 @@ end
 
 function testSmokeReadWrite(testCase)
 epochs = types.core.TimeIntervals(...
-    'colnames', {'id' 'start_time' 'stop_time'} .',...
+    'colnames', {'start_time' 'stop_time'} .',...
     'id', types.hdmf_common.ElementIdentifiers('data', 1),...
     'description', 'test TimeIntervals',...
     'start_time', types.hdmf_common.VectorData('data', 0, 'description', 'start time'),...
@@ -37,7 +38,7 @@ file = NwbFile('identifier', 'st', 'session_description', 'smokeTest', ...
     'timestamps_reference_time', datetime);
 
 nwbExport(file, 'epoch.nwb');
-readFile = nwbRead('epoch.nwb');
+readFile = nwbRead('epoch.nwb', 'ignorecache');
 % testCase.verifyEqual(testCase, readFile, file, ...
 %     'Could not write and then read a simple file');
 tests.util.verifyContainerEqual(testCase, readFile, file);

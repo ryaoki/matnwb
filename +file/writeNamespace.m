@@ -1,12 +1,13 @@
-function writeNamespace(namespaceName)
+function writeNamespace(namespaceName, saveDir)
 %check/load dependency namespaces
-Namespace = schemes.loadNamespace(namespaceName);
+Namespace = schemes.loadNamespace(namespaceName, saveDir);
 
-path = fullfile(pwd, '+types', ['+' misc.str2validName(Namespace.name)]);
-if exist(path, 'dir') == 7
-    rmdir(path, 's');
+classFileDir = fullfile(saveDir, '+types', ['+' misc.str2validName(Namespace.name)]);
+
+if 7 ~= exist(classFileDir, 'dir')
+    mkdir(classFileDir);
 end
-mkdir(path);
+
 classes = keys(Namespace.registry);
 pregenerated = containers.Map; %generated nodes and props for faster dependency resolution
 for i=1:length(classes)
@@ -17,7 +18,7 @@ for i=1:length(classes)
         continue;
     end
     
-    fid = fopen(fullfile(path, [className '.m']), 'W');
+    fid = fopen(fullfile(classFileDir, [className '.m']), 'W');
     try
         fwrite(fid, file.fillClass(className, Namespace, processed, ...
             classprops, inherited), 'char');

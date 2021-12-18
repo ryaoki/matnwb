@@ -9,7 +9,8 @@ end
 
 function setup(testCase)
 testCase.applyFixture(matlab.unittest.fixtures.WorkingFolderFixture);
-generateCore();
+generateCore('savedir', '.');
+rehash();
 end
 
 function testRegionRead(testCase)
@@ -33,7 +34,7 @@ nwb.acquisition.set('data', timeseries);
 %%
 
 nwbExport(nwb, 'test_stub_read.nwb');
-nwb2 = nwbRead('test_stub_read.nwb');
+nwb2 = nwbRead('test_stub_read.nwb', 'ignorecache');
 
 stub = nwb2.acquisition.get('data').data;
 
@@ -60,10 +61,15 @@ testCase.verifyEqual(stub(:, 1), data(:, 1));
 % test arbitrary indices
 primeInd = primes(25);
 testCase.verifyEqual(stub(primeInd), data(primeInd));
+% multidim scalar indices outputs data according to selection orientation.
+testCase.verifyEqual(stub(primeInd .'), data(primeInd .'));
 testCase.verifyEqual(stub(primeInd, 2:4, :), data(primeInd, 2:4, :));
 testCase.verifyEqual(stub(primeInd, :, 1), data(primeInd, :, 1));
 testCase.verifyEqual(stub(primeInd, [1 2 5]), data(primeInd, [1 2 5]));
 testCase.verifyEqual(stub([1 25], [1 5], [1 4], [1 2], [1 5]), data([1 25], [1 5], [1 4], [1 2], [1 5]));
+overflowPrimeInd = primes(31);
+testCase.verifyEqual(stub(overflowPrimeInd), stub(ind2sub(stub.dims, overflowPrimeInd)));
+testCase.verifyEqual(stub(overflowPrimeInd), data(overflowPrimeInd));
 
 % test duplicate indices
 testCase.verifyEqual(stub([1 1 1 1]), data([1 1 1 1]));
@@ -73,9 +79,10 @@ testCase.verifyEqual(stub([5 4 3 2 2]), data([5 4 3 2 2]));
 end
 
 function testObjectCopy(testCase)
-unitTestLocation = fullfile(misc.getMatnwbDir(), '+tests', '+unit');
-generateExtension(fullfile(unitTestLocation, 'regionReferenceSchema', 'rrs.namespace.yaml'));
-generateExtension(fullfile(unitTestLocation, 'compoundSchema', 'cs.namespace.yaml'));
+rootDir = misc.getMatnwbDir();
+unitTestLocation = fullfile(rootDir, '+tests', '+unit');
+generateExtension(fullfile(unitTestLocation, 'regionReferenceSchema', 'rrs.namespace.yaml'), 'savedir', '.');
+generateExtension(fullfile(unitTestLocation, 'compoundSchema', 'cs.namespace.yaml'), 'savedir', '.');
 rehash();
 nwb = NwbFile(...
     'identifier', 'DATASTUB',...
@@ -94,7 +101,7 @@ rcRef = types.cs.CompoundRefData('data', table(...
 nwb.acquisition.set('rc', rc);
 nwb.analysis.set('rcRef', rcRef);
 nwbExport(nwb, 'original.nwb');
-nwbNew = nwbRead('original.nwb');
+nwbNew = nwbRead('original.nwb', 'ignorecache');
 tests.util.verifyContainerEqual(testCase, nwbNew, nwb);
 nwbExport(nwbNew, 'new.nwb');
 end

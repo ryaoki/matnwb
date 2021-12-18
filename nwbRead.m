@@ -12,11 +12,25 @@ function nwb = nwbRead(filename, varargin)
 %
 %  Example:
 %    nwb = nwbRead('data.nwb');
-%    nwb = nwbRead('data.nwb', 
+%    nwb = nwbRead('data.nwb', 'ignorecache');
+%    nwb = nwbRead('data.nwb', 'savedir', '.');
 %
 %  See also GENERATECORE, GENERATEEXTENSION, NWBFILE, NWBEXPORT
-ignoreCache = ~isempty(varargin) && ischar(varargin{1}) &&...
-    strcmp('ignorecache', varargin{1});
+
+assert(iscellstr(varargin), 'NWB:NWBRead:InvalidParameters',...
+    'Optional parameters must all be character arrays.'); %#ok<ISCLSTR>
+
+ignoreCache = any(strcmpi(varargin, 'ignorecache'));
+
+saveDirMask = strcmpi(varargin, 'savedir');
+assert(isempty(saveDirMask) || ~saveDirMask(end), 'NWB:NWBRead:InvalidSaveDir',...
+    '`savedir` is a key value pair requiring a directory string as a value.');
+if any(saveDirMask)
+    saveDir = varargin{find(saveDirMask, 1, 'last') + 1};
+else
+    saveDir = misc.getMatnwbDir();
+end
+
 Blacklist = struct(...
     'attributes', {{'.specloc', 'object_id'}},...
     'groups', {{}});
@@ -30,14 +44,14 @@ end
 if ~ignoreCache
     if isempty(specLocation)
         try
-            generateCore(util.getSchemaVersion(filename));
+            generateCore(util.getSchemaVersion(filename), 'savedir', saveDir);
         catch ME
             if ~strcmp(ME.identifier, 'NWB:GenerateCore:MissingCoreSchema')
                 rethrow(ME);
             end
         end
     else
-        generateSpec(filename, h5info(filename, specLocation));
+        generateSpec(filename, h5info(filename, specLocation), 'savedir', saveDir);
     end
     rehash();
 end
@@ -63,13 +77,23 @@ end
 H5F.close(fid);
 end
 
-function generateSpec(filename, specinfo)
+function generateSpec(filename, specinfo, varargin)
+saveDirMask = strcmp(varargin, 'savedir');
+if any(saveDirMask)
+    assert(~saveDirMask(end),...
+        'NWB:Read:InvalidParameter',...
+        'savedir must be paired with the desired save directory.');
+    saveDir = varargin{find(saveDirMask, 1, 'last') + 1};
+else
+    saveDir = misc.getMatnwbDir();
+end
+
 specNames = cell(size(specinfo.Groups));
 fid = H5F.open(filename);
-for i=1:length(specinfo.Groups)
-    location = specinfo.Groups(i).Groups(1);
+for iGroup = 1:length(specinfo.Groups)
+    location = specinfo.Groups(iGroup).Groups(1);
     
-    namespaceName = split(specinfo.Groups(i).Name, '/');
+    namespaceName = split(specinfo.Groups(iGroup).Name, '/');
     namespaceName = namespaceName{end};
     
     filenames = {location.Datasets.Name};
@@ -82,31 +106,33 @@ for i=1:length(specinfo.Groups)
     sourceNames = {location.Datasets.Name};
     fileLocation = strcat(location.Name, '/', sourceNames);
     schemaMap = containers.Map;
-    for j=1:length(fileLocation)
-        did = H5D.open(fid, fileLocation{j});
-        if strcmp('namespace', sourceNames{j})
+    for iFileLocation = 1:length(fileLocation)
+        did = H5D.open(fid, fileLocation{iFileLocation});
+        if strcmp('namespace', sourceNames{iFileLocation})
             namespaceText = H5D.read(did);
         else
-            schemaMap(sourceNames{j}) = H5D.read(did);    
+            schemaMap(sourceNames{iFileLocation}) = H5D.read(did);    
         end
         H5D.close(did);
     end
     
-    Namespace = spec.generate(namespaceText, schemaMap);
-    spec.saveCache(Namespace);
-    specNames{i} = Namespace.name;
+    Namespaces = spec.generate(namespaceText, schemaMap);
+    % Handle embedded namespaces.
+    Namespace = Namespaces(strcmp({Namespaces.name}, namespaceName));
+    
+    spec.saveCache(Namespace, saveDir);
+    specNames{iGroup} = Namespace.name;
 end
 H5F.close(fid);
-fid = [];
 
 missingNames = cell(size(specNames));
-for i = 1:length(specNames)
-    name = specNames{i};
+for iName = 1:length(specNames)
+    name = specNames{iName};
     try
-        file.writeNamespace(name);
+        file.writeNamespace(name, saveDir);
     catch ME
         if strcmp(ME.identifier, 'NWB:Namespace:CacheMissing')
-            missingNames{i} = name;
+            missingNames{iName} = name;
         else
             rethrow(ME);
         end

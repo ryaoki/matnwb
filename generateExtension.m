@@ -16,8 +16,25 @@ function generateExtension(varargin)
 %      generateExtension('schema\myext\myextension.namespace.yaml', 'schema\myext2\myext2.namespace.yaml');
 %
 %   See also GENERATECORE
-for i = 1:length(varargin)
-    source = varargin{i};
+assert(iscellstr(varargin),...
+    'NWB:GenerateExtension:InvalidArguments',...
+    'Must be a cell array of strings.'); %#ok<ISCLSTR>
+
+saveDirMask = strcmp(varargin, 'savedir');
+if any(saveDirMask)
+    assert(~saveDirMask(end),...
+        'NWB:GenerateExtenion:InvalidParameter',...
+        'savedir must be paired with the desired save directory.');
+    saveDir = varargin{find(saveDirMask, 1, 'last') + 1};
+    saveDirParametersMask = saveDirMask | circshift(saveDirMask, 1);
+    sourceList = varargin(~saveDirParametersMask);
+else
+    saveDir = misc.getMatnwbDir();
+    sourceList = varargin;
+end
+
+for iNamespaceFiles = 1:length(sourceList)
+    source = sourceList{iNamespaceFiles};
     validateattributes(source, {'char', 'string'}, {'scalartext'});
     
     [localpath, ~, ~] = fileparts(source);
@@ -27,9 +44,13 @@ for i = 1:length(varargin)
     namespaceText = fread(fid, '*char') .';
     fclose(fid);
     
-    Namespace = spec.generate(namespaceText, localpath);
-    spec.saveCache(Namespace);
-    file.writeNamespace(Namespace.name);
-    rehash();
+    Namespaces = spec.generate(namespaceText, localpath);
+
+    for iNamespace = 1:length(Namespaces)
+        Namespace = Namespaces(iNamespace);
+        spec.saveCache(Namespace, saveDir);
+        file.writeNamespace(Namespace.name, saveDir);
+        rehash();
+    end
 end
 end
