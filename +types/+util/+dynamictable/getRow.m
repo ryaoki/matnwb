@@ -42,6 +42,33 @@ for i = 1:length(columns)
     end
 
     row{i} = select(DynamicTable, indexNames, ind);
+    if size(row{i},2)>1
+        % shift dimensions of non-row vectors. otherwise will result in
+        % invalid MATLAB table with uneven column height
+        row{i} = permute(row{i},circshift(1:ndims(row{i}),1));
+    end
+    if length(ind)==1
+        % cell-wrap single multidimensional matrices to prevent invalid
+        % MATLAB tables
+        if ~iscell(row{i}) && length(row{i}) > 1
+            row{i} = {row{i}};
+        end
+    end
+    if isscalar(row{i}) && isstruct(row{i})
+        % convert compound data type scalar struct into an array of
+        % structs.
+        structNames = fieldnames(row{i});
+        scalarStruct = row{i};
+        rowStruct = row{i}; % same as scalarStruct to maintain the field names.
+        for iRow = 1:length(ind)
+            for iField = 1:length(structNames)
+                fieldName = structNames{iField};
+                fieldData = scalarStruct.(fieldName);
+                rowStruct(iRow).(fieldName) = fieldData(iRow);
+            end
+        end
+        row{i} = rowStruct .';
+    end
 end
 subTable = table(row{:}, 'VariableNames', columns);
 end
@@ -59,18 +86,39 @@ else
 end
 
 if isscalar(colIndStack)
-    if isa(Vector.data, 'types.untyped.DataStub')
-        rank = length(Vector.data.dims);
+    if isa(Vector.data, 'types.untyped.DataStub') || ...
+            isa(Vector.data,'types.untyped.DataPipe')
+        if isa(Vector.data, 'types.untyped.DataStub')
+            refProp = Vector.data.dims;
+        else
+            refProp = Vector.data.internal.maxSize;
+        end
+        if length(refProp) == 2 && ...
+                refProp(2) ==1
+            % catch row vector
+            rank = 1;
+        else
+            rank = length(refProp);
+        end
     else
-        rank = ndims(Vector.data);
+        if iscolumn(Vector.data)
+            %catch row vector
+            rank = 1;
+        else
+            rank = ndims(Vector.data);
+        end
     end
-
     selectInd = cell(1, rank);
-    selectInd{1} = matInd;
-    selectInd(2:end) = {':'};
-
-    if isa(Vector.data, 'types.untyped.DataPipe')
-        selected = Vector.data.load(matInd);
+    selectInd(1:end-1) = {':'};
+    selectInd{end} = matInd;
+    if isstruct(Vector.data) && isscalar(Vector.data)
+        selected = struct();
+        selectedFields = fieldnames(Vector.data);
+        for i = 1:length(selectedFields)
+            fieldName = selectedFields{i};
+            columnData = Vector.data.(fieldName);
+            selected.(fieldName) = columnData(selectInd{:});
+        end
     else
         selected = Vector.data(selectInd{:});
     end
@@ -87,10 +135,12 @@ else
     startIndInd = matInd - 1;
     zeroMask = startIndInd == 0;
     startInds = zeros(size(startIndInd));
-    if isa(Vector.data, 'types.untyped.DataStub') || isa(Vector.data, 'types.untyped.DataPipe')
-        startInds(~zeroMask) = Vector.data.load(startIndInd(~zeroMask));
-    else
-        startInds(~zeroMask) = Vector.data(startIndInd(~zeroMask));
+    if ~isempty(startIndInd(~zeroMask))
+        if isa(Vector.data, 'types.untyped.DataStub') || isa(Vector.data, 'types.untyped.DataPipe')
+            startInds(~zeroMask) = Vector.data.load(startIndInd(~zeroMask));
+        else
+            startInds(~zeroMask) = Vector.data(startIndInd(~zeroMask));
+        end
     end
     startInds = startInds + 1;
 

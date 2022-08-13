@@ -45,7 +45,6 @@ if specifiesId
     newId = p.Results.id;
 elseif isa(DynamicTable.id.data, 'types.untyped.DataPipe')
     newId = DynamicTable.id.data.offset;
-    DynamicTable.id.data.append(DynamicTable.id.data.offset);
 else
     newId = length(DynamicTable.id.data);
 end
@@ -67,6 +66,6 @@ elseif iscell(rv)
         validateType(TypeStruct, rv{iVal});
     end
 else
-    validateattributes(rv, {TypeStruct.type}, {'size', [NaN TypeStruct.dims(2:end)]});
+    validateattributes(rv, {TypeStruct.type}, {});
 end
 end

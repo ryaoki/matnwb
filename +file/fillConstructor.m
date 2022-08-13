@@ -1,13 +1,6 @@
 function fcstr = fillConstructor(name, parentname, defaults, propnames, props, namespace)
 caps = upper(name);
-fcnbody = strjoin({['% ' caps ' Constructor for ' name] ...
-    ['%     obj = ' caps '(parentname1,parentvalue1,..,parentvalueN,parentargN,name1,value1,...,nameN,valueN)'] ...
-    }, newline);
-
-txt = fillParamDocs(propnames, props);
-if ~isempty(txt)
-    fcnbody = [fcnbody newline txt];
-end
+fcnbody = ['% ' caps ' Constructor for ' name];
 
 txt = fillBody(parentname, defaults, propnames, props, namespace);
 if ~isempty(txt)
@@ -20,7 +13,7 @@ fcnbody = strjoin({fcnbody,...
     'end'}, newline);
 
 % insert check for DynamicTable class and child classes
-txt = fillCheck(name,parentname);
+txt = fillCheck(name, namespace);
 if ~isempty(txt)
     fcnbody = [fcnbody newline txt];
 end
@@ -30,68 +23,6 @@ fcstr = strjoin({...
     file.addSpaces(fcnbody, 4)...
     'end'}, newline);
 
-end
-
-function fdfp = fillDocFromProp(prop, propnm)
-if ischar(prop)
-    fdfp = prop;
-elseif isstruct(prop)
-    fnm = fieldnames(prop);
-    subp = '';
-    for i=1:length(fnm)
-        nm = fnm{i};
-        subpropl = file.addSpaces(fillDocFromProp(prop.(nm), nm), 4);
-        subp = [subp newline subpropl];
-    end
-    fdfp = ['table/struct of vectors/struct array/containers.Map of vectors with values:' newline subp];
-elseif isa(prop, 'file.Attribute')
-    fdfp = prop.dtype;
-    if isa(fdfp, 'containers.Map')
-        switch fdfp('reftype')
-            case 'region'
-                reftypenm = 'region';
-            case 'object'
-                reftypenm = 'object';
-            otherwise
-                error('Invalid reftype found whilst filling Constructor prop docs.');
-        end
-        fdfp = ['ref to ' fdfp('target_type') ' ' reftypenm];
-    end
-elseif isa(prop, 'containers.Map')
-    switch prop('reftype')
-        case 'region'
-            reftypenm = 'region';
-        case 'object'
-            reftypenm = 'object';
-        otherwise
-            error('Invalid reftype found whilst filling Constructor prop docs.');
-    end
-    fdfp = ['ref to ' prop('target_type') ' ' reftypenm];
-elseif isa(prop, 'file.Dataset') && isempty(prop.type)
-    fdfp = fillDocFromProp(prop.dtype);
-elseif isempty(prop.type)
-    fdfp = 'types.untyped.Set';
-else
-    fdfp = prop.type;
-end
-if nargin >= 2
-    fdfp = ['% ' propnm ' = ' fdfp];
-end
-end
-
-function fcstr = fillParamDocs(names, props)
-fcstr = '';
-if isempty(names)
-    return;
-end
-
-fcstrlist = cell(length(names), 1);
-for i=1:length(names)
-    nm = names{i};
-    prop = props(nm);
-    fcstrlist{i} = fillDocFromProp(prop, nm);
-end
-fcstr = strjoin(fcstrlist, newline);
 end
 
 function bodystr = fillBody(pname, defaults, names, props, namespace)
@@ -106,8 +37,8 @@ else
         else
             overridemap(nm) =...
                 sprintf('types.util.correctType(%d, ''%s'')',...
-                    props(nm).value,...
-                    props(nm).dtype);
+                props(nm).value,...
+                props(nm).dtype);
         end
     end
     kwargs = io.map2kwargs(overridemap);
@@ -129,11 +60,11 @@ varnames = repmat({''}, size(names));
 for i=1:length(names)
     nm = names{i};
     prop = props(nm);
-    
+
     if isa(prop, 'file.Group') || isa(prop, 'file.Dataset')
         dynamicConstrained(i) = prop.isConstrainedSet && strcmpi(nm, prop.type);
         anon(i) = ~prop.isConstrainedSet && isempty(prop.name);
-        
+
         if ~isempty(prop.type)
             varnames{i} = nm;
             try
@@ -202,7 +133,7 @@ for i=1:length(names)
     prop = props(names{i});
     if (isa(prop, 'file.Group') &&...
             (prop.hasAnonData || prop.hasAnonGroups || prop.isConstrainedSet)) ||...
-       (isa(prop, 'file.Dataset') && prop.isConstrainedSet)
+            (isa(prop, 'file.Dataset') && prop.isConstrainedSet)
         defaults{i} = 'types.untyped.Set()';
     else
         defaults{i} = '[]';
@@ -217,19 +148,28 @@ parser = [parser, strcat('obj.', names, ' = p.Results.', names, ';')];
 parser = strjoin(parser, newline);
 bodystr(end+1:end+length(parser)+1) = [newline parser];
 end
-function  checkTxt = fillCheck(name,parentname)
-    checkTxt = [];
-    if strcmp(name,'DynamicTable')
-        checkTxt = strjoin({...
-            '[ignoreList,~,~] = intersect(obj.colnames,properties(obj));', ...
-            'types.util.dynamictable.checkConfig(obj,ignoreList);', ...
-        }, newline);
-    elseif strcmp(parentname,'types.hdmf_common.DynamicTable') || ...
-            strcmp(parentname,'types.core.DynamicTable')
-        checkTxt = strjoin({...
-            'types.util.dynamictable.checkConfig(obj);', ...
-        }, newline);
-    end
-    
+
+function checkTxt = fillCheck(name, namespace)
+checkTxt = [];
+
+% find if a dynamic table ancestry exists
+ancestry = namespace.getRootBranch(name);
+isDynamicTableDescendent = false;
+for iAncestor = 1:length(ancestry)
+    ParentRaw = ancestry{iAncestor};
+    % this is always true, we just use the proper index as typedefs may vary.
+    typeDefInd = isKey(ParentRaw, namespace.TYPEDEF_KEYS);
+    isDynamicTableDescendent = isDynamicTableDescendent ...
+        || strcmp('DynamicTable', ParentRaw(namespace.TYPEDEF_KEYS{typeDefInd}));
 end
 
+if ~isDynamicTableDescendent
+    return;
+end
+
+checkTxt = strjoin({ ...
+    sprintf('if strcmp(class(obj), ''%s'')', namespace.getFullClassName(name)), ...
+    '    types.util.dynamictable.checkConfig(obj);', ...
+    'end',...
+    }, newline);
+end

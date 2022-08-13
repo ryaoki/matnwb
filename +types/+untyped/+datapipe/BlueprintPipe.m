@@ -95,12 +95,25 @@ classdef BlueprintPipe < types.untyped.datapipe.Pipe
                 'Export the DataPipe to append.']);
         end
         
-         function setPipeProperty(obj, prop)
+        function setPipeProperty(obj, prop)
             assert(isa(prop, 'types.untyped.datapipe.Property'),...
                 'Can only add filters.');
+
+            isDynamicFilter = isa(prop, ...
+                'types.untyped.datapipe.properties.DynamicFilter');
             
+            % dedup pipe properties if it already exists with special case
+            % behavior for dynamic filters.
             for i = 1:length(obj.pipeProperties)
-                if isa(prop, class(obj.pipeProperties{i}))
+                pipeProp = obj.pipeProperties{i};
+
+                isSameClass = isa(prop, class(pipeProp));
+
+                if isSameClass
+                    if isDynamicFilter && prop.dynamicFilter ~= pipeProp.dynamicFilter
+                        continue;
+                    end
+
                     obj.pipeProperties{i} = prop;
                     return;
                 end
@@ -159,11 +172,18 @@ classdef BlueprintPipe < types.untyped.datapipe.Pipe
                     cellfun(@num2str, num2cell(maxSize),...
                     'UniformOutput', false),...
                     ', ');
-                assert(length(size(obj.data)) == length(maxSize)...
-                    && all(size(obj.data) <= maxSize),...
-                    errorId, ['Data size must be bound by maxSize.\n'...
+                errorMessage = sprintf(['Data size must be bound by maxSize.\n'...
                     'Data size was [%s].  maxSize configured to be [%s]'],...
                     formatDataSize, formatMaxSize);
+
+                dataSize = size(obj.data);
+                if 1 == length(maxSize)
+                    assert(1 >= sum(dataSize > 1) && max(dataSize) <= maxSize, ...
+                        errorId, errorMessage);
+                else
+                    assert(length(dataSize) == length(maxSize) && all(dataSize <= maxSize), ...
+                        errorId, errorMessage);
+                end
             end
             
             dataType = config.dataType; %#ok<PROPLC>
@@ -175,7 +195,7 @@ classdef BlueprintPipe < types.untyped.datapipe.Pipe
             
             if ~obj.hasPipeProperty(...
                     'types.untyped.datapipe.properties.Chunking')
-                obj.addPipeProperty(...
+                obj.setPipeProperty(...
                     Chunking(guessChunkSize(dataType, maxSize)));
             end
             dcpl = obj.makeDcpl();
@@ -202,11 +222,7 @@ end
 function sid = allocateSpace(maxSize)
 rank = length(maxSize);
 h5_dims = zeros(1, rank);
-h5_rank = find(maxSize == 1);
-if isempty(h5_rank)
-    h5_rank = rank;
-end
-h5_maxdims = fliplr(maxSize(1:h5_rank));
+h5_maxdims = fliplr(maxSize);
 h5_unlimited = H5ML.get_constant_value('H5S_UNLIMITED');
 h5_maxdims(isinf(h5_maxdims)) = h5_unlimited;
 sid = H5S.create_simple(rank, h5_dims, h5_maxdims);
